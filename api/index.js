@@ -3,6 +3,7 @@
 import express from 'express';
 
 const app = express();
+const port = 3000;
 
 // Ruta de prueba
 app.get('/', (req, res) => {
@@ -16,4 +17,8 @@ app.get('/products', (req, res) => {
   ]);
 });
 
+
+app.listen(port,() => {
+  console.log("Aplicacion iniciada");
+} );
 export default app;
