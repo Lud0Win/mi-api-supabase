@@ -1,6 +1,7 @@
 {
   "name": "api-supabase-vercel",
   "version": "1.0.0",
+  "type": "module",
   "description": "API REST con Express y Supabase para Vercel",
   "main": "api/index.js",
   "scripts": {
