@@ -17,31 +17,65 @@ app.get('/', (req, res) => {
   res.status(200).json({ message: '¡Bienvenido a la API de Productos con Supabase!' });
 });
 
-// Ruta para obtener todos los productos de la tabla 'products'
+// --- ENDPOINTS DE PRODUCTOS ---
+
+// Endpoint para obtener TODOS los productos
 app.get('/products', async (req, res) => {
   try {
-    // Usamos el cliente de Supabase para hacer la consulta a la tabla 'products'
     const { data, error } = await supabase
-      .from('products') // El nombre exacto de tu tabla
-      .select('*');     // Selecciona todos los campos
+      .from('products')
+      .select('*');
 
-    // Si Supabase devuelve un error, lo notificamos
-    if (error) {
-      console.error('Error de Supabase:', error);
-      // Es importante no exponer detalles del error al cliente en producción
-      return res.status(500).json({ error: 'Error al consultar la base de datos' });
-    }
-
-    // Si la consulta es exitosa, enviamos los datos
+    if (error) throw error;
     res.status(200).json(data);
-
-  } catch (err) {
-    // Capturamos cualquier otro error inesperado en el servidor
-    console.error('Error inesperado en el servidor:', err);
-    res.status(500).json({ error: 'Error interno del servidor' });
+  } catch (error) {
+    console.error('Error al obtener productos:', error);
+    res.status(500).json({ error: 'Error al consultar la base de datos' });
   }
 });
 
+// NUEVO: Endpoint para obtener UN producto por su ID
+app.get('/products/:id', async (req, res) => {
+  try {
+    // Obtenemos el ID de los parámetros de la URL
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', id) // Filtramos por el campo 'id'
+      .single();   // .single() asegura que obtenemos un solo objeto y no un array
+
+    // Si Supabase devuelve un error (ej. el producto no existe), lo lanzamos
+    if (error) throw error;
+
+    // Si el producto se encuentra, lo devolvemos
+    res.status(200).json(data);
+  } catch (error) {
+    // Este error se activa si .single() no encuentra el registro
+    console.error('Error al obtener el producto por ID:', error);
+    res.status(404).json({ error: 'Producto no encontrado' });
+  }
+});
+
+// --- ENDPOINTS DE CATEGORÍAS ---
+
+// NUEVO: Endpoint para obtener TODAS las categorías
+app.get('/categories', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('categories') // Consultamos la nueva tabla 'categories'
+      .select('*');
+
+    if (error) throw error;
+    res.status(200).json(data);
+  } catch (error) {
+    console.error('Error al obtener categorías:', error);
+    res.status(500).json({ error: 'Error al consultar la base de datos' });
+  }
+});
+
+
 // Exportamos la app para que Vercel la pueda usar como una función serverless.
-// NO se usa app.listen() en Vercel.
 export default app;
+
