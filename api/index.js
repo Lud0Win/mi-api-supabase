@@ -1,41 +1,19 @@
-// api/index.js (CORREGIDO)
+// api/index.js (CÓDIGO DE PRUEBA MÍNIMO)
 
 import express from 'express';
-import cors from 'cors';
-import { supabase } from '../config/supabase.js';
 
 const app = express();
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
-
-// --- DEFINICIÓN DE RUTAS CORREGIDAS ---
-
-// La ruta raíz de la API ahora es '/' (accesible a través de /api)
+// Ruta de prueba
 app.get('/', (req, res) => {
-  res.status(200).json({ message: '¡Bienvenido a la API de Productos!' });
+  res.status(200).json({ message: '¡El servidor de prueba funciona!' });
 });
 
-// La ruta de productos ahora es '/products' (accesible a través de /api/products)
-app.get('/products', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*');
-
-    if (error) {
-      console.error('Error al obtener productos:', error);
-      return res.status(500).json({ error: 'Error en la base de datos', details: error.message });
-    }
-
-    res.status(200).json(data);
-
-  } catch (err) {
-    console.error('Error inesperado:', err);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
+// Ruta de prueba para productos
+app.get('/products', (req, res) => {
+  res.status(200).json([
+    { id: 1, name: 'Producto de prueba' }
+  ]);
 });
 
-// Exportamos la app para que Vercel pueda utilizarla
 export default app;
