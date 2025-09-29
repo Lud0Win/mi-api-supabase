@@ -23,41 +23,44 @@ app.get('/products', async (req, res) => {
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit - 1;
 
-    // Construimos la consulta base
-    let query = supabase.from('products');
+    // --- Construcción de Consultas ---
     
-    // Si hay un término de búsqueda, aplicamos el filtro de Full-Text Search
-    if (searchTerm) {
-      // CORRECCIÓN: Se eliminaron las comillas simples extra alrededor de searchTerm
-      query = query.textSearch('fts', searchTerm, {
-        type: 'websearch', // 'websearch' es ideal para input de usuario (maneja "and", "or")
-        config: 'spanish' // Especificamos el diccionario para mejores resultados
-      });
-    }
+    // Función para construir la consulta base y aplicar el filtro de búsqueda si existe
+    const buildQuery = () => {
+      let query = supabase.from('products');
+      if (searchTerm) {
+        query = query.textSearch('fts', searchTerm, {
+          type: 'websearch',
+          config: 'spanish'
+        });
+      }
+      return query;
+    };
 
     // --- Consultas a Supabase ---
-    // Clonamos la consulta para no repetir código.
-    const countQuery = query;
-    const dataQuery = query;
     
-    // Primera consulta: Obtenemos el conteo total de los resultados (filtrados si hay búsqueda)
-    const { count, error: countError } = await countQuery
+    // Primera consulta: Obtenemos el conteo total.
+    // Construimos la consulta y le aplicamos el select para contar.
+    const { count, error: countError } = await buildQuery()
       .select('*', { count: 'exact', head: true });
       
     if (countError) {
-      console.error('Error al obtener el conteo:', countError);
-      return res.status(500).json({ error: 'Error en la base de datos', details: countError.message });
+      // Logueamos el error completo para tener más detalles en Vercel
+      console.error('Error detallado al obtener el conteo:', countError);
+      return res.status(500).json({ error: 'Error en la base de datos al contar', details: countError.message });
     }
 
-    // Segunda consulta: Obtenemos los datos para la página actual
-    const { data, error: dataError } = await dataQuery
+    // Segunda consulta: Obtenemos los datos para la página actual.
+    // Construimos la misma consulta base y le aplicamos el rango y orden.
+    const { data, error: dataError } = await buildQuery()
       .select('*')
       .range(startIndex, endIndex)
       .order('id', { ascending: true });
 
     if (dataError) {
-      console.error('Error al obtener productos:', dataError);
-      return res.status(500).json({ error: 'Error en la base de datos', details: dataError.message });
+      // Logueamos el error completo
+      console.error('Error detallado al obtener productos:', dataError);
+      return res.status(500).json({ error: 'Error en la base de datos al obtener datos', details: dataError.message });
     }
 
     // Enviamos la respuesta estructurada
@@ -69,7 +72,8 @@ app.get('/products', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Error inesperado:', err);
+    // Error general que no fue capturado por las consultas
+    console.error('Error inesperado en el endpoint /products:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
