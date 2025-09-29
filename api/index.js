@@ -14,65 +14,68 @@ app.use(express.json());
 // 1. OBTENER TODOS LOS PRODUCTOS (CON PAGINACIÓN Y BÚSQUEDA)
 app.get('/products', async (req, res) => {
   try {
-    // Leer 'page', 'limit' y 'search' de los query params.
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const searchTerm = req.query.search;
 
-    // Calcular el rango para la paginación
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit - 1;
 
-    // --- Construcción de Consultas ---
-    
-    // Función para construir la consulta base y aplicar el filtro de búsqueda si existe
-    const buildQuery = () => {
-      let query = supabase.from('products');
-      if (searchTerm) {
-        query = query.textSearch('fts', searchTerm, {
-          type: 'websearch',
-          config: 'spanish'
+    let query = supabase.from('products').select('*');
+    let countQuery = supabase.from('products').select('*', { count: 'exact', head: true });
+
+    // --- LÓGICA DE BÚSQUEDA MEJORADA ---
+    if (searchTerm) {
+      // 1. Llamamos a nuestra función 'search_products' en la base de datos
+      const { data: searchData, error: searchError } = await supabase.rpc('search_products', {
+        search_term: searchTerm
+      });
+
+      if (searchError) {
+        console.error('Error en la función RPC de búsqueda:', searchError);
+        return res.status(500).json({ error: 'Error al ejecutar la búsqueda', details: searchError.message });
+      }
+
+      // Si la búsqueda no devuelve resultados, retornamos un array vacío.
+      const matchingIds = searchData.map(item => item.id);
+      if (matchingIds.length === 0) {
+        return res.status(200).json({
+          totalCount: 0,
+          page,
+          limit,
+          data: []
         });
       }
-      return query;
-    };
+
+      // 2. Filtramos las consultas principales para que solo incluyan los IDs encontrados
+      query = query.in('id', matchingIds);
+      countQuery = countQuery.in('id', matchingIds);
+    }
 
     // --- Consultas a Supabase ---
-    
-    // Primera consulta: Obtenemos el conteo total.
-    // Construimos la consulta y le aplicamos el select para contar.
-    const { count, error: countError } = await buildQuery()
-      .select('*', { count: 'exact', head: true });
-      
+    const { count, error: countError } = await countQuery;
     if (countError) {
-      // Logueamos el error completo para tener más detalles en Vercel
       console.error('Error detallado al obtener el conteo:', countError);
       return res.status(500).json({ error: 'Error en la base de datos al contar', details: countError.message });
     }
 
-    // Segunda consulta: Obtenemos los datos para la página actual.
-    // Construimos la misma consulta base y le aplicamos el rango y orden.
-    const { data, error: dataError } = await buildQuery()
-      .select('*')
+    const { data, error: dataError } = await query
       .range(startIndex, endIndex)
       .order('id', { ascending: true });
 
     if (dataError) {
-      // Logueamos el error completo
       console.error('Error detallado al obtener productos:', dataError);
       return res.status(500).json({ error: 'Error en la base de datos al obtener datos', details: dataError.message });
     }
 
-    // Enviamos la respuesta estructurada
     res.status(200).json({
       totalCount: count,
-      page: page,
-      limit: limit,
-      data: data
+      page,
+      limit,
+      data
     });
 
   } catch (err) {
-    // Error general que no fue capturado por las consultas
     console.error('Error inesperado en el endpoint /products:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
@@ -83,7 +86,6 @@ app.get('/products', async (req, res) => {
 app.get('/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
-
     const { data, error } = await supabase
       .from('products')
       .select('*')
@@ -97,9 +99,7 @@ app.get('/products/:id', async (req, res) => {
       console.error('Error al obtener el producto por ID:', error);
       return res.status(500).json({ error: 'Error en la base de datos', details: error.message });
     }
-
     res.status(200).json(data);
-
   } catch (err) {
     console.error('Error inesperado:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
@@ -110,23 +110,17 @@ app.get('/products/:id', async (req, res) => {
 // ... (código sin cambios) ...
 app.get('/categories', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*');
-
+    const { data, error } = await supabase.from('categories').select('*');
     if (error) {
       console.error('Error al obtener categorías:', error);
       return res.status(500).json({ error: 'Error en la base de datos', details: error.message });
     }
-
     res.status(200).json(data);
-
   } catch (err) {
     console.error('Error inesperado:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
-
 
 // Exportamos la app para que Vercel pueda utilizarla
 export default app;
