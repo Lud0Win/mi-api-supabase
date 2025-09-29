@@ -1,40 +1,67 @@
-// Usamos la sintaxis de ES Modules (import)
 import express from 'express';
 import cors from 'cors';
-// Importamos nuestro cliente de supabase configurado
 import { supabase } from '../config/supabase.js';
 
+// Inicialización de la app Express
 const app = express();
 
-// Middlewares: Habilitan CORS y permiten que el servidor entienda JSON
+// Middlewares
 app.use(cors());
 app.use(express.json());
 
-// --- DEFINICIÓN DE RUTAS ---
+// --- ENDPOINTS DE LA API ---
 
-// Ruta raíz de bienvenida
-app.get('/', (req, res) => {
-  res.status(200).json({ message: '¡Bienvenido a la API de Productos con Supabase!' });
-});
-
-// --- ENDPOINTS DE PRODUCTOS ---
-
-// Endpoint para obtener TODOS los productos
+// 1. OBTENER TODOS LOS PRODUCTOS (CON PAGINACIÓN)
 app.get('/products', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*');
+    // --- Lógica de Paginación ---
+    // Leer 'page' y 'limit' de los query params.
+    // Usamos valores por defecto si no se proporcionan.
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    // Calcular el rango de datos a solicitar
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit - 1;
 
-    if (error) throw error;
-    res.status(200).json(data);
-  } catch (error) {
-    console.error('Error al obtener productos:', error);
-    res.status(500).json({ error: 'Error al consultar la base de datos' });
+    // --- Consultas a Supabase ---
+    // Primera consulta: Obtenemos solo el conteo total de forma eficiente
+    const { count, error: countError } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true });
+      
+    if (countError) {
+      console.error('Error al obtener el conteo:', countError);
+      return res.status(500).json({ error: 'Error en la base de datos', details: countError.message });
+    }
+
+    // Segunda consulta: Obtenemos los datos para la página actual
+    const { data, error: dataError } = await supabase
+      .from('products')
+      .select('*')
+      .range(startIndex, endIndex) // Aquí aplicamos el rango
+      .order('id', { ascending: true }); // Opcional: ordenar para consistencia
+
+    if (dataError) {
+      console.error('Error al obtener productos:', dataError);
+      return res.status(500).json({ error: 'Error en la base de datos', details: dataError.message });
+    }
+
+    // Enviamos una respuesta estructurada con los datos y la información de paginación
+    res.status(200).json({
+      totalCount: count,
+      page: page,
+      limit: limit,
+      data: data
+    });
+
+  } catch (err) {
+    console.error('Error inesperado:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
-// Endpoint para obtener UN producto por su ID
+// 2. OBTENER UN PRODUCTO POR SU ID
 app.get('/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -43,35 +70,45 @@ app.get('/products/:id', async (req, res) => {
       .from('products')
       .select('*')
       .eq('id', id)
-      .single();
+      .single(); // .single() es ideal para obtener un único registro
 
-    if (error) throw error;
+    if (error) {
+      // Si el error es 'PGRST116', significa que no se encontró el registro
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Producto no encontrado' });
+      }
+      console.error('Error al obtener el producto por ID:', error);
+      return res.status(500).json({ error: 'Error en la base de datos', details: error.message });
+    }
+
     res.status(200).json(data);
-  } catch (error) {
-    console.error('Error al obtener el producto por ID:', error);
-    res.status(404).json({ error: 'Producto no encontrado' });
+
+  } catch (err) {
+    console.error('Error inesperado:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
-// --- ENDPOINTS DE CATEGORÍAS ---
-
-// Endpoint para obtener TODAS las categorías en su propia ruta de nivel superior
+// 3. OBTENER TODAS LAS CATEGORÍAS
 app.get('/categories', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('categories')
       .select('*');
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error al obtener categorías:', error);
+      return res.status(500).json({ error: 'Error en la base de datos', details: error.message });
+    }
+
     res.status(200).json(data);
-  } catch (error)
-  {
-    console.error('Error al obtener categorías:', error);
-    res.status(500).json({ error: 'Error al consultar la base de datos' });
+
+  } catch (err) {
+    console.error('Error inesperado:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
-
-// Exportamos la app para que Vercel la pueda usar como una función serverless.
+// Exportamos la app para que Vercel pueda utilizarla
 export default app;
 
