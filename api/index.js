@@ -25,13 +25,14 @@ app.get('/products', async (req, res) => {
 
     // Construimos la consulta base
     let query = supabase.from('products');
-
+    
     // Si hay un término de búsqueda, aplicamos el filtro de Full-Text Search
     if (searchTerm) {
-      // Usamos .textSearch() que está optimizado para usar el índice que creamos.
-      // 'fts' es el nombre de nuestra columna tsvector.
-      // websearch_to_tsquery es una función flexible para procesar la entrada del usuario.
-      query = query.textSearch('fts', `'${searchTerm}'`);
+      // CORRECCIÓN: Se eliminaron las comillas simples extra alrededor de searchTerm
+      query = query.textSearch('fts', searchTerm, {
+        type: 'websearch', // 'websearch' es ideal para input de usuario (maneja "and", "or")
+        config: 'spanish' // Especificamos el diccionario para mejores resultados
+      });
     }
 
     // --- Consultas a Supabase ---
@@ -83,10 +84,9 @@ app.get('/products/:id', async (req, res) => {
       .from('products')
       .select('*')
       .eq('id', id)
-      .single(); // .single() es ideal para obtener un único registro
+      .single();
 
     if (error) {
-      // Si el error es 'PGRST116', significa que no se encontró el registro
       if (error.code === 'PGRST116') {
         return res.status(404).json({ error: 'Producto no encontrado' });
       }
