@@ -11,23 +11,36 @@ app.use(express.json());
 
 // --- ENDPOINTS DE LA API ---
 
-// 1. OBTENER TODOS LOS PRODUCTOS (CON PAGINACIÓN)
+// 1. OBTENER TODOS LOS PRODUCTOS (CON PAGINACIÓN Y BÚSQUEDA)
 app.get('/products', async (req, res) => {
   try {
-    // --- Lógica de Paginación ---
-    // Leer 'page' y 'limit' de los query params.
-    // Usamos valores por defecto si no se proporcionan.
+    // Leer 'page', 'limit' y 'search' de los query params.
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    
-    // Calcular el rango de datos a solicitar
+    const searchTerm = req.query.search;
+
+    // Calcular el rango para la paginación
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit - 1;
 
+    // Construimos la consulta base
+    let query = supabase.from('products');
+
+    // Si hay un término de búsqueda, aplicamos el filtro de Full-Text Search
+    if (searchTerm) {
+      // Usamos .textSearch() que está optimizado para usar el índice que creamos.
+      // 'fts' es el nombre de nuestra columna tsvector.
+      // websearch_to_tsquery es una función flexible para procesar la entrada del usuario.
+      query = query.textSearch('fts', `'${searchTerm}'`);
+    }
+
     // --- Consultas a Supabase ---
-    // Primera consulta: Obtenemos solo el conteo total de forma eficiente
-    const { count, error: countError } = await supabase
-      .from('products')
+    // Clonamos la consulta para no repetir código.
+    const countQuery = query;
+    const dataQuery = query;
+    
+    // Primera consulta: Obtenemos el conteo total de los resultados (filtrados si hay búsqueda)
+    const { count, error: countError } = await countQuery
       .select('*', { count: 'exact', head: true });
       
     if (countError) {
@@ -36,18 +49,17 @@ app.get('/products', async (req, res) => {
     }
 
     // Segunda consulta: Obtenemos los datos para la página actual
-    const { data, error: dataError } = await supabase
-      .from('products')
+    const { data, error: dataError } = await dataQuery
       .select('*')
-      .range(startIndex, endIndex) // Aquí aplicamos el rango
-      .order('id', { ascending: true }); // Opcional: ordenar para consistencia
+      .range(startIndex, endIndex)
+      .order('id', { ascending: true });
 
     if (dataError) {
       console.error('Error al obtener productos:', dataError);
       return res.status(500).json({ error: 'Error en la base de datos', details: dataError.message });
     }
 
-    // Enviamos una respuesta estructurada con los datos y la información de paginación
+    // Enviamos la respuesta estructurada
     res.status(200).json({
       totalCount: count,
       page: page,
@@ -62,6 +74,7 @@ app.get('/products', async (req, res) => {
 });
 
 // 2. OBTENER UN PRODUCTO POR SU ID
+// ... (código sin cambios) ...
 app.get('/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -90,6 +103,7 @@ app.get('/products/:id', async (req, res) => {
 });
 
 // 3. OBTENER TODAS LAS CATEGORÍAS
+// ... (código sin cambios) ...
 app.get('/categories', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -108,6 +122,7 @@ app.get('/categories', async (req, res) => {
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
+
 
 // Exportamos la app para que Vercel pueda utilizarla
 export default app;
