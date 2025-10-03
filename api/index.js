@@ -21,8 +21,8 @@ app.get('/products', async (req, res) => {
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit - 1;
 
-    let query = supabase.from('products').select('*');
-    let countQuery = supabase.from('products').select('*', { count: 'exact', head: true });
+    // Unificamos la consulta de datos y conteo en una sola
+    let query = supabase.from('products').select('*', { count: 'exact' });
 
     // --- LÓGICA DE BÚSQUEDA MEJORADA ---
     if (searchTerm) {
@@ -36,9 +36,9 @@ app.get('/products', async (req, res) => {
         return res.status(500).json({ error: 'Error al ejecutar la búsqueda', details: searchError.message });
       }
 
-      // Si la búsqueda no devuelve resultados, retornamos un array vacío.
-      const matchingIds = searchData.map(item => item.id);
-      if (matchingIds.length === 0) {
+      // 2. Manejamos el caso de que la búsqueda no devuelva resultados (incluso nulos)
+      // Si searchData es null o un array vacío, no hay coincidencias.
+      if (!searchData || searchData.length === 0) {
         return res.status(200).json({
           totalCount: 0,
           page,
@@ -47,27 +47,24 @@ app.get('/products', async (req, res) => {
         });
       }
 
-      // 2. Filtramos las consultas principales para que solo incluyan los IDs encontrados
+      // Mapeamos los IDs de forma segura
+      const matchingIds = searchData.map(item => item.id);
+
+      // 3. Filtramos la consulta principal para que solo incluya los IDs encontrados
       query = query.in('id', matchingIds);
-      countQuery = countQuery.in('id', matchingIds);
     }
 
-    // --- Consultas a Supabase ---
-    const { count, error: countError } = await countQuery;
-    if (countError) {
-      console.error('Error detallado al obtener el conteo:', countError);
-      return res.status(500).json({ error: 'Error en la base de datos al contar', details: countError.message });
-    }
-
-    const { data, error: dataError } = await query
+    // --- Ejecutamos la consulta única a Supabase ---
+    const { data, count, error } = await query
       .range(startIndex, endIndex)
       .order('id', { ascending: true });
 
-    if (dataError) {
-      console.error('Error detallado al obtener productos:', dataError);
-      return res.status(500).json({ error: 'Error en la base de datos al obtener datos', details: dataError.message });
+    if (error) {
+      console.error('Error detallado al obtener productos:', error);
+      return res.status(500).json({ error: 'Error en la base de datos', details: error.message });
     }
 
+    // Devolvemos la respuesta con los datos y el conteo total
     res.status(200).json({
       totalCount: count,
       page,
