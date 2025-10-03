@@ -19,14 +19,13 @@ app.get('/products', async (req, res) => {
     const searchTerm = req.query.search;
 
     const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit - 1;
 
     // Unificamos la consulta de datos y conteo en una sola
     let query = supabase.from('products').select('*', { count: 'exact' });
 
-    // --- LÓGICA DE BÚSQUEDA MEJORADA ---
+    // --- LÓGICA DE BÚSQUEDA MEJORADA (VERSIÓN CORREGIDA) ---
     if (searchTerm) {
-      // 1. Llamamos a nuestra función 'search_products' en la base de datos
+      // 1. Llamar a la función 'search_products' en la base de datos
       const { data: searchData, error: searchError } = await supabase.rpc('search_products', {
         search_term: searchTerm
       });
@@ -36,8 +35,9 @@ app.get('/products', async (req, res) => {
         return res.status(500).json({ error: 'Error al ejecutar la búsqueda', details: searchError.message });
       }
 
-      // 2. Manejamos el caso de que la búsqueda no devuelva resultados (incluso nulos)
-      // Si searchData es null o un array vacío, no hay coincidencias.
+      // **PUNTO CLAVE DE LA CORRECCIÓN**
+      // Si la búsqueda no devuelve resultados, o la estructura es inesperada,
+      // es mejor devolver una respuesta vacía directamente.
       if (!searchData || searchData.length === 0) {
         return res.status(200).json({
           totalCount: 0,
@@ -47,14 +47,31 @@ app.get('/products', async (req, res) => {
         });
       }
 
-      // Mapeamos los IDs de forma segura
-      const matchingIds = searchData.map(item => item.id);
+      // 2. Extraer los IDs de la respuesta de forma segura.
+      // El problema más común es que la función devuelva objetos donde la columna
+      // no se llame 'id', o que algunos objetos no la tengan.
+      // Este código extrae la propiedad 'id' y filtra cualquier valor inválido.
+      const matchingIds = searchData
+        .map(item => item.id)
+        .filter(id => id !== undefined && id !== null);
 
-      // 3. Filtramos la consulta principal para que solo incluya los IDs encontrados
+      // 3. Si no se encontraron IDs válidos después de procesar la respuesta, no hay resultados.
+      if (matchingIds.length === 0) {
+        return res.status(200).json({
+          totalCount: 0,
+          page,
+          limit,
+          data: []
+        });
+      }
+
+      // 4. Filtramos la consulta principal para que solo incluya los IDs encontrados.
       query = query.in('id', matchingIds);
     }
 
     // --- Ejecutamos la consulta única a Supabase ---
+    // Nota: El método .range() de Supabase es inclusivo en ambos extremos.
+    const endIndex = startIndex + limit - 1;
     const { data, count, error } = await query
       .range(startIndex, endIndex)
       .order('id', { ascending: true });
@@ -121,4 +138,3 @@ app.get('/categories', async (req, res) => {
 
 // Exportamos la app para que Vercel pueda utilizarla
 export default app;
-
